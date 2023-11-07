@@ -52,8 +52,8 @@ class ConnectionManagerInterface(metaclass=abc.ABCMeta):
 
 
 class DefaultConnectionManager(ConnectionManagerInterface):
-  """Default connection manager implementation, a basic mapping of 
-      connections to connection name."""
+  """Default connection manager implementation, a basic mapping of
+    connections to connection name."""
 
   def __init__(self):
     self._log = logging.getLogger(__name__)
@@ -62,7 +62,7 @@ class DefaultConnectionManager(ConnectionManagerInterface):
   def get_connection(self, name: str) -> ConnectionInterface:
     if name in self._connections:
       return self._connections.get(name)
-    self._log.error("Connection not found: %s", name)
+    raise RuntimeError(f"Connection not found: {name}")
 
   def get_default_connection_name(self) -> str:
     default_connection = next(iter(self._connections))

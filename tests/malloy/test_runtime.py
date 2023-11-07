@@ -33,11 +33,12 @@ from pathlib import Path
 from malloy import Runtime
 from malloy.service import ServiceManager
 from malloy.data.duckdb import DuckDbConnection
+from malloy.data.snowflake import SnowflakeConnection
 
 pytestmark = pytest.mark.skipif(
     not Path(ServiceManager.service_path()).exists(),
     reason=f"Could not find: {ServiceManager.service_path()}",
-    allow_module_level=True)
+)
 
 logging.basicConfig(level=logging.ERROR)
 
@@ -86,7 +87,7 @@ async def test_returns_sql(service_manager):
   rt.add_connection(DuckDbConnection(home_dir=home_dir))
   rt.load_file(test_file_01)
   [sql, connection] = await rt.get_sql(query=query_by_state)
-  assert sql == """
+  assert (sql == """
 SELECT\x20
    airports."state" as "state",
    COUNT( 1) as "airport_count"
@@ -94,7 +95,7 @@ FROM 'data/airports.parquet' as airports
 WHERE airports."state" IS NOT NULL
 GROUP BY 1
 ORDER BY 2 desc NULLS LAST
-""".lstrip()
+""".lstrip())
   assert connection == "duckdb"
 
 
@@ -140,7 +141,7 @@ async def test_another_with():
 
 @pytest.mark.asyncio
 async def test_renders_result():
-  """"Verify that HTML results are rendered"""
+  """Verify that HTML results are rendered"""
   with Runtime() as rt:
     rt.add_connection(DuckDbConnection(home_dir=home_dir))
     rt.load_file(test_file_01)
@@ -152,7 +153,7 @@ async def test_renders_result():
     assert json_obj[0]["airport_count"] == 1845
     assert json_obj[22]["state"] == "NC"
     assert json_obj[22]["airport_count"] == 400
-    assert sql == """
+    assert (sql == """
 SELECT\x20
    airports."state" as "state",
    COUNT( 1) as "airport_count"
@@ -160,4 +161,48 @@ FROM 'data/airports.parquet' as airports
 WHERE airports."state" IS NOT NULL
 GROUP BY 1
 ORDER BY 2 desc NULLS LAST
-""".lstrip()
+""".lstrip())
+
+
+@pytest.mark.asyncio
+async def test_basic_snowflake_malloy_source():
+  # TODO: make the binary for malloy-service and update in commit
+  # can remove the static service map after that
+  service_manager = ServiceManager("localhost:14310")
+  query_by_faa_region = """
+run: airports -> {
+    where: faa_region != null
+    group_by: faa_region
+    aggregate: airport_count
+}"""
+  with Runtime(service_manager=service_manager) as rt:
+    rt.add_connection(SnowflakeConnection())
+    test_file_snowflake = f"{home_dir}/test_file_snowflake.malloy"
+    rt.load_file(test_file_snowflake)
+    data = await rt.run(query=query_by_faa_region)
+    df_data = data.to_dataframe()
+    assert len(df_data) == 9
+    assert df_data["faa_region"][0] == "AGL"
+    assert df_data["airport_count"][0] == 4437
+
+
+@pytest.mark.asyncio
+async def test_basic_snowflake_sql_source():
+  # TODO: make the binary for malloy-service and update in commit
+  # can remove the static service map after that
+  service_manager = ServiceManager("localhost:14310")
+  query_by_faa_region = """
+run: airports -> {
+    where: faa_region != null
+    aggregate: airport_count is count()
+    group_by: faa_region
+}"""
+  with Runtime(service_manager=service_manager) as rt:
+    rt.add_connection(SnowflakeConnection())
+    rt.load_source(
+        "source: airports is snowflake.sql('select * from airports')")
+    data = await rt.run(query=query_by_faa_region)
+    df_data = data.to_dataframe()
+    assert len(df_data) == 9
+    assert df_data["faa_region"][0] == "AGL"
+    assert df_data["airport_count"][0] == 4437

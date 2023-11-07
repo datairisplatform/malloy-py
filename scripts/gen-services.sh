@@ -2,7 +2,7 @@
 
 pushd ./submodules/malloy-service
 
-npm ci && npm run build && npm run package
+npm ci && npm run malloy-link && npm run build && npm run package
 
 popd
 
