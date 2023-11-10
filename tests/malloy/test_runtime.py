@@ -168,7 +168,7 @@ ORDER BY 2 desc NULLS LAST
 async def test_basic_snowflake_malloy_source():
   # TODO: make the binary for malloy-service and update in commit
   # can remove the static service map after that
-  service_manager = ServiceManager("localhost:14310")
+  service_manager = ServiceManager()
   query_by_faa_region = """
 run: airports -> {
     where: faa_region != null
@@ -190,7 +190,7 @@ run: airports -> {
 async def test_basic_snowflake_sql_source():
   # TODO: make the binary for malloy-service and update in commit
   # can remove the static service map after that
-  service_manager = ServiceManager("localhost:14310")
+  service_manager = ServiceManager()
   query_by_faa_region = """
 run: airports -> {
     where: faa_region != null
