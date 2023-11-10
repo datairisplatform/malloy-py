@@ -19,7 +19,8 @@ classifiers = [
 keywords = ["malloy"]
 dependencies = [
     "duckdb>=0.8.0, <1.0.0",
-    "google-cloud-bigquery"
+    "google-cloud-bigquery",
+    "snowflake-connector-python",
 ]
 requires-python = ">3.7"
 
