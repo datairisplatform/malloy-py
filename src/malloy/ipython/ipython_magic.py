@@ -28,8 +28,12 @@ import atexit
 import malloy
 import nest_asyncio
 import shlex
-from malloy.data.bigquery import BigQueryConnection
-from malloy.data.duckdb import DuckDbConnection
+import sys
+import importlib
+
+from absl import flags
+from absl import logging
+
 from malloy.data.connection_manager import DefaultConnectionManager
 from malloy.service import ServiceManager
 from malloy import Runtime
@@ -37,6 +41,11 @@ from malloy.runtime import MalloyRuntimeError
 from .schema_view import render_schema
 from .tab_renderer import render_results_tab
 from .warnings import render_warnings
+
+_MALLOY_CONNECTIONS = flags.DEFINE_list(
+    "malloy_connections", "malloy.data.bigquery.BigQueryConnection,"
+    "malloy.data.duckdb.DuckDbConnection",
+    "List of connections to initialize by default in ipython runtime")
 
 nest_asyncio.apply()
 
@@ -168,20 +177,19 @@ async def _malloy_query(line: str, cell: str):
     try:
       query = "\n" + cell
       job_result = None
-      html_content = None
       sql = None
+      [job_result, sql,
+       prepared_result] = await model.get_sql_and_run(query=query)
+      dataframe_result = job_result.to_dataframe()
       if results_var:
-        [job_result, sql] = await model.get_sql_and_run(query=query)
-        IPython.get_ipython().user_ns[results_var] = job_result.to_dataframe()
+        IPython.get_ipython().user_ns[results_var] = dataframe_result
         print("✅ Stored in", results_var)
       else:
-        [job_result, html_content, json, sql] = await model.render(query=query)
-        if html_content is None:
-          print("No results")
-        else:
-          warning_html = render_warnings(runtime.get_problems())
-          tabbed_html = render_results_tab(html_content, json, sql)
-          display.display(display.HTML(warning_html + tabbed_html))
+        result_html = render_results_tab(
+            dataframe_result.to_json(orient="records", indent=2),
+            dataframe_result.size, prepared_result, sql)
+        warning_html = render_warnings(runtime.get_problems())
+        display.display(display.HTML(warning_html + result_html))
     except MalloyRuntimeError as e:
       print(f"🚫 {e.args[0]}")
   else:
@@ -206,8 +214,17 @@ def load_ipython_extension(ipython):
   connection_manager = DefaultConnectionManager()
   runtime = malloy.Runtime(connection_manager, service_manager)
 
-  runtime.add_connection(BigQueryConnection())
-  runtime.add_connection(DuckDbConnection())
+  if not flags.FLAGS.is_parsed():
+    logging.debug("absl flags not yet parsed, attempting to parse sys.argv")
+    flags.FLAGS(sys.argv, True)
+
+  for runtime_connection in _MALLOY_CONNECTIONS.value:
+    logging.info("Loading connection: %s", runtime_connection)
+    class_name = runtime_connection.rsplit(".")[-1]
+    mod_path = ".".join(runtime_connection.rsplit(".")[:-1])
+    mod = importlib.import_module(mod_path)
+    conn_class = getattr(mod, class_name)
+    runtime.add_connection(conn_class())
 
   ipython.register_magic_function(malloy_model, "line_cell")
   ipython.register_magic_function(malloy_query, "cell")

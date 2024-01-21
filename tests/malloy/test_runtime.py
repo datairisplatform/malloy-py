@@ -23,12 +23,12 @@
 """Test runtime.py"""
 
 import asyncio
-import pytest
-import pytest_asyncio
-import logging
 import json
 import re
+import pytest
+import pytest_asyncio
 
+from absl import logging
 from pathlib import Path
 from malloy import Runtime
 from malloy.service import ServiceManager
@@ -40,7 +40,7 @@ pytestmark = pytest.mark.skipif(
     reason=f"Could not find: {ServiceManager.service_path()}",
 )
 
-logging.basicConfig(level=logging.ERROR)
+logging.set_verbosity(logging.ERROR)
 
 home_dir = f"{Path(__file__).parent}/test_data"
 test_file_01 = f"{home_dir}/test_file_01.malloy"
@@ -75,7 +75,7 @@ async def test_logs_error_and_returns_none_if_file_not_found(
   rt = Runtime(service_manager=service_manager)
   rt.add_connection(DuckDbConnection(home_dir=home_dir))
   rt.load_file(fake_file)
-  [sql, connection] = await rt.compile_and_maybe_execute(query=query_by_state)
+  [sql, connection] = await rt.compile_malloy(query=query_by_state)
   assert sql is None
   assert connection is None
   assert f"[Errno 2] No such file or directory: '{fake_file}'" in caplog.text
@@ -90,7 +90,7 @@ async def test_returns_sql(service_manager):
   assert (sql == """
 SELECT\x20
    airports."state" as "state",
-   COUNT( 1) as "airport_count"
+   COUNT(1) as "airport_count"
 FROM 'data/airports.parquet' as airports
 WHERE airports."state" IS NOT NULL
 GROUP BY 1
@@ -156,7 +156,7 @@ async def test_renders_result():
     assert (sql == """
 SELECT\x20
    airports."state" as "state",
-   COUNT( 1) as "airport_count"
+   COUNT(1) as "airport_count"
 FROM 'data/airports.parquet' as airports
 WHERE airports."state" IS NOT NULL
 GROUP BY 1
@@ -206,3 +206,12 @@ run: airports -> {
     assert len(df_data) == 9
     assert df_data["faa_region"][0] == "AGL"
     assert df_data["airport_count"][0] == 4437
+
+@pytest.mark.asyncio
+async def test_returns_prepared_result():
+  """verify that prepared result is available"""
+  with Runtime() as rt:
+    rt.add_connection(DuckDbConnection(home_dir=home_dir))
+    rt.load_file(test_file_01)
+    [_, _, prepared_result] = await rt.get_sql_and_run(query=query_by_state)
+    assert prepared_result is not None and prepared_result != ""

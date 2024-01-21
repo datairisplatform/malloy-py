@@ -48,7 +48,7 @@ def test_returns_custom_name():
 
 TEST_QUERY_1 = {
     "sql":
-        "SELECT id, code FROM airports ORDER BY id LIMIT 5;",
+        "SELECT id, code FROM malloytest.malloytest.airports ORDER BY id LIMIT 5;",
     "dataframe":
         pandas.read_json(
             StringIO("""
